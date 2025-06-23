@@ -2,11 +2,17 @@
 
 import { useStream } from "@langchain/langgraph-sdk/react"
 import type { Message } from "@langchain/langgraph-sdk"
+import { createJoinAIHeader } from "@/lib/joinai"
 
 export function Assistant() {
     const thread = useStream<{ messages: Message[] }>({
         apiUrl: process.env["NEXT_PUBLIC_LANGGRAPH_API_URL"] ?? "",
         assistantId: process.env["NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID"] ?? "",
+        defaultHeaders: createJoinAIHeader(
+            process.env["JOINAI_APP_ID"] ?? "",
+            process.env["JOINAI_APP_KEY"] ?? "",
+            process.env["JOINAI_APP_PATH"] ?? ""
+        ),
         messagesKey: "messages",
         onUpdateEvent: (event: any) => {
             console.log("Update event:", event);
