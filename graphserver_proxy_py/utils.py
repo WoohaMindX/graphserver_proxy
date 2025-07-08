@@ -1,10 +1,11 @@
-import math
-import time
 import base64
-import json
 import hashlib
-import uuid
-import os
+import hmac
+import json
+from datetime import datetime
+from time import mktime
+from wsgiref.handlers import format_date_time
+
 from dotenv import dotenv_values
 from typing import Optional
 
@@ -25,72 +26,30 @@ def load_env_config(env_path: str = ".env") -> dict:
 
 
 
-def create_joinai_header(appid: str, appkey: str, path: str | None = None) -> dict:
-    """
-    创建 JoinAI Assistant API 请求所需的认证请求头
 
-    该函数根据 JoinAI Assistant API 的认证规范，生成包含签名验证信息的 HTTP 请求头。
-    请求头包含以下关键字段：
-    - X-Server-Param: Base64 编码的服务器参数（包含 appid 和 csid）
-    - X-CurTime: 当前时间戳
-    - X-CheckSum: MD5 签名校验值
-    - Content-Type: 请求内容类型
+def create_headers(app_id, app_secret, host):
     
-    Args:
-        appid (str): JoinAI Assistant 应用 ID，用于标识应用身份
-        appkey (str): JoinAI Assistant 应用密钥，用于签名计算
-        path (str | None, optional): API 路径，用于提取应用名称。
-                                   如果为 None，则使用默认应用名称 "default"。
-                                   默认值为 None。
-    
-    Returns:
-        dict: 包含认证信息的请求头字典，包含以下键值对：
-            - "X-Server-Param": Base64 编码的服务器参数
-            - "X-CurTime": 时间戳字符串
-            - "X-CheckSum": MD5 签名字符串
-            - "Content-Type": "application/json"
-    
-    Example:
-        >>> header = create_joinai_header("your_app_id", "your_app_key", "/api/v1/chat")
-        >>> print(header["Content-Type"])
-        application/json
-        
-        >>> header = create_joinai_header("your_app_id", "your_app_key")
-        >>> # 使用默认 path，应用名称为 "default"
-    
-    Note:
-        - 应用名称会被填充到 24 位长度（不足部分用 "0" 填充）
-        - csid 由 appid + 应用名称 + UUID 组成
-        - 签名计算公式：MD5(appkey + 时间戳 + Base64编码的服务器参数)
-    """
-    
-    _app_id = appid
-    _app_key = appkey
-    uuid_str = str(uuid.uuid1())
-    if path is None:
-        _app_name = "default"
-    else:
-        _app_name = path.split('/')[1]
-    for i in range(24 - len(_app_name)):
-        _app_name += "0"
-    capabilityname = _app_name
-    csid = _app_id + capabilityname + uuid_str
-    tmp_xServerParam = {
-        "appid": _app_id,
-        "csid": csid
-    }
-    TDEV = 0
-    xCurTime = str(int(math.floor(time.time())) + TDEV)
-    xServerParam = str(base64.b64encode(json.dumps(
-        tmp_xServerParam).encode('utf-8')), encoding="utf8")
-    xCheckSum = hashlib.md5(
-        bytes(_app_key + xCurTime + xServerParam, encoding="utf8")).hexdigest()
-    
-    # 构建请求头
-    header = {
-        "X-Server-Param": xServerParam,
-        "X-CurTime": xCurTime,
-        "X-CheckSum": xCheckSum,
-        'Content-Type': 'application/json'
-    }
-    return header
+
+        # 生成RFC1123格式的时间戳
+        now = datetime.now()
+        date = format_date_time(mktime(now.timetuple()))
+
+        # 拼接字符串
+        signature_origin = "host: {}\ndate: {}\n".format(host, date)
+
+        # 进行hmac-sha256进行加密
+        signature_sha = hmac.new(app_secret.encode('utf-8'), signature_origin.encode('utf-8'),
+                                 digestmod=hashlib.sha256).digest()
+
+        signature_sha_base64 = base64.b64encode(signature_sha).decode(encoding='utf-8')
+
+        authorization = f'hmac api_key={app_id}, algorithm=hmac-sha256, headers=host date request-line, signature={signature_sha_base64}'
+
+        # 将请求的鉴权参数组合为字典
+        headers = {
+            "authorization": authorization,
+            "date": date,
+            "host": host,
+			"appId": app_id
+        }
+        return headers
